@@ -71,7 +71,8 @@ enum Tokens : int {
     tok_import,
     tok_arrow,
     tok_in,
-    tok_new
+    tok_new,
+    tok_power
 };
 using Token = std::pair<Tokens, std::string>;
 
@@ -181,6 +182,7 @@ std::vector<Token> lexer(const std::string& string)
             case '[': lol.push_back({tok_big_para_open, "["}); continue; //done
             case ']': lol.push_back({tok_big_para_close, "]"}); continue; //done
             case '!': lol.push_back({tok_not, "!"}); continue; //done
+            case '^': lol.push_back({tok_power, "^"}); continue; //done
         }
 
         // String literals

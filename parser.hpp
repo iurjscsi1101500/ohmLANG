@@ -8,14 +8,35 @@
 #include <functional>
 #include <unordered_map>
 #include <stdexcept>
-//AssignementExpr
-using SymbolTable = std::unordered_map<std::string, std::shared_ptr<ast::types>>;
-SymbolTable symtab;
+
+using num = std::variant<int64_t, float, std::string, char, bool, std::shared_ptr<ast::BinaryExpr>, std::monostate>;
+struct Variable {
+    num value;
+    std::string name;
+    std::shared_ptr<ast::types> type;
+};
+std::vector<Variable> symtab;
 bool is_type_compatible(const std::shared_ptr<ast::types>& declared, const std::shared_ptr<ast::types>& inferred) {
     if (!declared || !inferred)
         return false;
 
     return declared->type_name() == inferred->type_name();
+}
+num convert_to_num(std::shared_ptr<ast::Expr> expr) {
+	if (auto s = dynamic_pointer_cast<ast::NumberExpr>(expr))
+		return s->num;
+        if (auto s = dynamic_pointer_cast<ast::CharExpr>(expr))
+                return s->value;
+        if (auto s = dynamic_pointer_cast<ast::FloatExpr>(expr))
+                return s->num;
+        if (auto s = dynamic_pointer_cast<ast::BoolExpr>(expr))
+                return s->num;
+        if (auto s = dynamic_pointer_cast<ast::StringExpr>(expr))
+                return s->string;
+        if (auto s = dynamic_pointer_cast<ast::BinaryExpr>(expr))
+                return s;
+
+	return std::monostate{};
 }
 enum binding_power : int {
     default_bp = 0,
@@ -37,7 +58,7 @@ public:
     std::vector<std::string> errors;
     std::vector<Token> tokens;
     int position;
-    bool is_in_scope_class = false;
+    bool is_in_scope_class = false; //forgot why these exist but too lazy to remove these lmao
     bool is_in_scope_enum = false;
     bool hastokens(parser *p);
     Token AdvanceToken(parser *p);
@@ -48,7 +69,6 @@ public:
     ~parser();
 };
 std::vector<std::string> names;
-std::vector<std::string> varNamess;
 using stmt_handler = std::shared_ptr<ast::stmt> (*)(parser*);
 using nud_handler  = std::shared_ptr<ast::Expr> (*)(parser*);
 using led_handler  = std::shared_ptr<ast::Expr> (*)(parser*, std::shared_ptr<ast::Expr>, binding_power);
@@ -99,6 +119,14 @@ Token parser::expect_or(Tokens expected_1, Tokens expected_2, parser *p) {
     }
     return p->AdvanceToken(p);
 }
+bool is_declared(const std::string& var_name, const std::vector<Variable>& symtab) {
+    for (const auto& var : symtab) {
+        if (var.name == var_name)
+            return true;
+    }
+    return false;
+}
+
 bool parser::hastokens(parser *p) {
     return p->position < p->tokens.size() &&
            p->tokens[p->position].first != Tokens::tok_eof;
@@ -191,18 +219,17 @@ std::shared_ptr<ast::types> infer_type_from_expr(std::shared_ptr<ast::Expr> expr
     } else if (auto boollit = std::dynamic_pointer_cast<BoolExpr>(expr)) {
         return std::make_shared<SymbolType>("bool");
     } else if (auto sym = std::dynamic_pointer_cast<SymbolExpr>(expr)) {
-        std::cout << sym->symbol << "sigma.com ";
-        auto it = symtab.find(sym->symbol);
-        if (it == symtab.end()) {
+        if (!is_declared(sym->symbol, symtab)) {
             throw std::runtime_error("Undefined variable used in expression: " + sym->symbol);
         }
-        return it->second;
+	auto it = std::find_if(symtab.begin(), symtab.end(), [&](const Variable& var) { return var.name == sym->symbol; });
+        return it->type;
     } else if (auto arr = std::dynamic_pointer_cast<ArrayLiteral>(expr)) {
         if (arr->expr.empty()) {
             throw std::runtime_error("Cannot infer type of empty array literal.");
         }
         auto element_type = infer_type_from_expr(arr->expr[0]);
-        return std::make_shared<ArrayType>(element_type, static_cast<int>(arr->expr.size()));
+        return std::make_shared<ArrayType>(element_type);
     }  else if (auto binop = std::dynamic_pointer_cast<ast::BinaryExpr>(expr)) {
         const std::string& op = binop->opreator;
         auto ltype = infer_type_from_expr(binop->left);
@@ -238,8 +265,10 @@ std::shared_ptr<ast::Expr> parse_primary_expr(parser *p) {
     case tok_char_var:
         return std::make_shared<ast::CharExpr>(p->AdvanceToken(p).second[0]);
     case tok_true:
+	p->AdvanceToken(p);
         return std::make_shared<ast::BoolExpr>(true);
     case tok_false:
+	p->AdvanceToken(p);
         return std::make_shared<ast::BoolExpr>(false);
     default:
         throw std::runtime_error("Cannot create primary expression\n");
@@ -254,8 +283,6 @@ std::shared_ptr<ast::Expr> parse_binary_expr(parser *p, std::shared_ptr<ast::Exp
     auto right_type_ptr = infer_type_from_expr(right);
     std::string l_type = left_type_ptr->type_name();
     std::string r_type = right_type_ptr->type_name();
-
-    std::cout << "Left Type: " << l_type << ", Right Type: " << r_type << "\n";
 
     if (_operator == "&&" || _operator == "||") {
         if (l_type != "bool" || r_type != "bool") {
@@ -299,14 +326,14 @@ std::shared_ptr<ast::Expr> parse_range_expr(parser *p, std::shared_ptr<ast::Expr
     auto right = parse_expr(p, bp);
 
     if (auto sym = std::dynamic_pointer_cast<ast::SymbolExpr>(left)) {
-        if (symtab.find(sym->symbol) == symtab.end())
+        if (!is_declared(sym->symbol, symtab))
             throw std::runtime_error("Undefined variable in range start: " + sym->symbol);
     } else if (!std::dynamic_pointer_cast<ast::NumberExpr>(left)) {
         throw std::runtime_error("Invalid range start: must be int or defined variable");
     }
 
     if (auto sym = std::dynamic_pointer_cast<ast::SymbolExpr>(right)) {
-        if (symtab.find(sym->symbol) == symtab.end())
+        if (!is_declared(sym->symbol, symtab))
             throw std::runtime_error("Undefined variable in range end: " + sym->symbol);
     } else if (!std::dynamic_pointer_cast<ast::NumberExpr>(right)) {
         throw std::runtime_error("Invalid range end: must be int or defined variable");
@@ -352,11 +379,11 @@ std::shared_ptr<ast::Expr> parse_assignment(parser *p, std::shared_ptr<ast::Expr
     auto rhs = parse_expr(p, assignment);
 
     if (auto sym = std::dynamic_pointer_cast<ast::SymbolExpr>(left)) {
-        auto it = symtab.find(sym->symbol);
-        if (it == symtab.end()) {
+        if (!is_declared(sym->symbol, symtab)) {
             throw std::runtime_error("Undefined variable on left-hand side of assignment: " + sym->symbol);
         }
-        auto lhs_type = it->second;
+	auto it = std::find_if(symtab.begin(), symtab.end(), [&](const Variable& var) { return var.name == sym->symbol; });
+        auto lhs_type = it->type;
         auto rhs_type = infer_type_from_expr(rhs);
             if (operatorToken.first != tok_equal) {
                 if (lhs_type->type_name() != "int" || rhs_type->type_name() != "int") {
@@ -384,26 +411,22 @@ std::shared_ptr<ast::stmt> parse_var(parser *p)
     if (isconst) p->AdvanceToken(p);
     p->expect(Tokens::tok_let, p);
     auto varName = p->expect(Tokens::tok_identifier, p).second;
-    for (auto s: varNamess) {
-        if (varName == s) {
-            throw std::runtime_error("Name already taken");
-        }
-    }
     for (auto s: names) {
         if (varName == s) {
             throw std::runtime_error("Name already taken");
         }
     }
-    if (p->is_in_scope_class || p->is_in_scope_enum)
-        varNamess.push_back(varName + "aloo.com.bruh.brr_brr_patabin_idk_lol_hi_noob_pro_max_ultra__" + names.back());
-    else
-        varNamess.push_back(varName);
 
     if (p->currentToken(p).first == Tokens::tok_column) {
         p->expect(Tokens::tok_column, p);
         extypes = parse_types(p, default_bp);
         p->AdvanceToken(p);
     }
+
+    if (is_declared(varName, symtab)) {
+        throw std::runtime_error("Name already taken");
+    }
+
     if (p->currentToken(p).first != Tokens::tok_semicolon) {
         p->expect(Tokens::tok_equal, p);
         assignment_= parse_expr(p, assignment);
@@ -426,7 +449,7 @@ std::shared_ptr<ast::stmt> parse_var(parser *p)
     if ((assignment_ == NULL && isconst == true) || (assignment_ == NULL && extypes == NULL))
         throw std::runtime_error("Need a value to declare const OR need a value to declare var with types\n");
 
-    symtab[varName] = extypes;
+    symtab.push_back(Variable{convert_to_num(assignment_), varName, extypes});
     names.push_back(varName);
 
     return std::make_shared<ast::VarDecStmt>(assignment_, varName, isconst, extypes);
@@ -436,16 +459,9 @@ std::shared_ptr<ast::types> parse_symbol_type(parser *p) {
 }
 std::shared_ptr<ast::types> parse_array_type(parser *p) {
     p->expect(Tokens::tok_big_para_open, p);
-    auto expr = parse_expr(p, default_bp);
-    auto numExpr = std::dynamic_pointer_cast<ast::NumberExpr>(expr);
-    if (!numExpr)
-        throw std::runtime_error("size only can be integer");
-    if (numExpr->is_negitive_or_zero)
-        throw std::runtime_error("size only can be positive integer");
-    
     p->expect(Tokens::tok_big_para_close, p);
     auto _p = parse_types(p, primary);
-    return std::make_shared<ast::ArrayType>(_p, numExpr->num);
+    return std::make_shared<ast::ArrayType>(_p);
 }
 
 std::shared_ptr<ast::stmt> parse_block(parser *p, bool is_in_loop = false, bool are_return_allowed = true) {
@@ -467,11 +483,6 @@ std::shared_ptr<ast::stmt> parse_block(parser *p, bool is_in_loop = false, bool 
 std::shared_ptr<ast::stmt> parse_class_dec_stmt(parser *p) {
     p->AdvanceToken(p);
     auto className = p->expect(Tokens::tok_identifier, p).second;
-    for (auto s: varNamess) {
-        if (className == s) {
-            throw std::runtime_error("Name already taken");
-        }
-    }
     for (auto s: names) {
         if (className == s) {
             throw std::runtime_error("Name already taken");
@@ -490,11 +501,6 @@ std::shared_ptr<ast::stmt> parse_class_dec_stmt(parser *p) {
 std::shared_ptr<ast::stmt> parse_enum_dec_stmt(parser *p) {
     p->AdvanceToken(p);
     auto EnumName = p->expect(Tokens::tok_identifier, p).second;
-    for (auto s: varNamess) {
-        if (EnumName == s) {
-            throw std::runtime_error("Name already taken");
-        }
-    }
     for (auto s: names) {
         if (EnumName == s) {
             throw std::runtime_error("Name already taken");
@@ -552,6 +558,10 @@ std::shared_ptr<ast::Expr> parse_prefix(parser *p) {
     if (type->type_name() != "bool") {
         throw std::runtime_error("Expected bool expression after unary operator");
     }
+    if (auto sym = std::dynamic_pointer_cast<ast::SymbolExpr>(expr_)) {
+	auto it = std::find_if(symtab.begin(), symtab.end(), [&](const Variable& var) { return var.name == sym->symbol; });
+	it->value = !std::get<bool>(it->value);
+    }
     return std::make_shared<ast::PrefixExpr>(opToken, expr_);
 }
 
@@ -563,10 +573,10 @@ std::shared_ptr<ast::Expr> parse_array_literal(parser *p) {
     std::string first_type;
 
     if (auto sym = std::dynamic_pointer_cast<ast::SymbolExpr>(first)) {
-        auto it = symtab.find(sym->symbol);
-        if (it == symtab.end())
+        if (!is_declared(sym->symbol, symtab))
             throw std::runtime_error("Undefined variable in array literal: " + sym->symbol);
-        first_type = it->second->type_name();
+        auto it = std::find_if(symtab.begin(), symtab.end(), [&](const Variable& var) { return var.name == sym->symbol; });
+        first_type = it->type->type_name();
     } else {
         first_type = infer_type_from_expr(first)->type_name();
     }
@@ -581,10 +591,10 @@ std::shared_ptr<ast::Expr> parse_array_literal(parser *p) {
         std::string next_type;
 
         if (auto sym = std::dynamic_pointer_cast<ast::SymbolExpr>(next)) {
-            auto it = symtab.find(sym->symbol);
-            if (it == symtab.end())
+            if (!is_declared(sym->symbol, symtab))
                 throw std::runtime_error("Undefined variable in array literal: " + sym->symbol);
-            next_type = it->second->type_name();
+            auto it = std::find_if(symtab.begin(), symtab.end(), [&](const Variable& var) { return var.name == sym->symbol; });
+            next_type = it->type->type_name();
         } else {
             next_type = infer_type_from_expr(next)->type_name();
         }
@@ -608,12 +618,12 @@ std::shared_ptr<ast::stmt> parse_if_else(parser *p) {
     if (condition_type->type_name() != "bool") {
         throw std::runtime_error("Condition in 'if' must be bool: " + condition_type->type_name());
     }
-    // Check if 'condition' is a variable reference
     if (auto var_expr = std::dynamic_pointer_cast<ast::VarDecStmt>(condition)) {
         std::string var_name = var_expr->var_name;
 
-        if (symtab.find(var_name) != symtab.end()) {
-            auto declared_type = symtab[var_name];
+	auto it = std::find_if(symtab.begin(), symtab.end(), [&](const Variable& var) { return var.name == var_name; });
+        if (it != symtab.end()) {
+            auto declared_type = it->type;
 
             if (declared_type != condition_type) {
                 throw std::runtime_error("Type mismatch in if condition: variable type does not match expression type.");
@@ -645,8 +655,9 @@ std::shared_ptr<ast::stmt> parse_while(parser *p) {
     if (auto var_expr = std::dynamic_pointer_cast<ast::VarDecStmt>(condition)) {
         std::string var_name = var_expr->var_name;
 
-        if (symtab.find(var_name) != symtab.end()) {
-            auto declared_type = symtab[var_name];
+        auto it = std::find_if(symtab.begin(), symtab.end(), [&](const Variable& var) { return var.name == var_name; });
+        if (it != symtab.end()) {
+            auto declared_type = it->type;
 
             if (declared_type != condition_type) {
                 throw std::runtime_error("Type mismatch in while condition: variable type does not match expression type.");
@@ -840,6 +851,7 @@ void createTokenLookups(void) {
     led(Tokens::tok_multiple, multiplicative, parse_binary_expr);
     led(Tokens::tok_divide, multiplicative, parse_binary_expr);
     led(Tokens::tok_percent, multiplicative, parse_binary_expr);
+    led(Tokens::tok_power, multiplicative, parse_binary_expr);
     led(Tokens::tok_arrow, member, parse_member_expr);
     led(Tokens::tok_big_para_open, member, parse_member_expr);
     led(Tokens::tok_open_bracket, call, parse_call_expr);
@@ -850,8 +862,8 @@ void createTokenLookups(void) {
     nud(Tokens::tok_num, primary, parse_primary_expr);
     nud(Tokens::tok_float_num, primary, parse_primary_expr);
     nud(Tokens::tok_string_literal, primary, parse_primary_expr);
-    nud(Tokens::tok_false, default_bp, parse_primary_expr);
-    nud(Tokens::tok_true, default_bp, parse_primary_expr);
+    nud(Tokens::tok_false, primary, parse_primary_expr);
+    nud(Tokens::tok_true, primary, parse_primary_expr);
     nud(Tokens::tok_char_var, primary, parse_primary_expr);
     nud(Tokens::tok_identifier, primary, parse_primary_expr);
     nud(Tokens::tok_open_bracket, primary, parse_paren_expr);

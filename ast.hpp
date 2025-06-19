@@ -24,18 +24,13 @@ struct SymbolType : public types {
 
 struct ArrayType : public types {
     std::shared_ptr<types> type;
-    int size;
-    ArrayType(std::shared_ptr<types> type, int size) : type(type), size(size) {}
+    ArrayType(std::shared_ptr<types> type) : type(type) {}
     std::string type_name() const override {
-        return "[" + std::to_string(size) + "] " + type->type_name();
+        return "[] " + type->type_name();
     }
 };
-#include <iostream>
-#include <string>
-#include <vector>
-#include <memory>
 
-// === Type Enum ===
+//EXPR
 enum class ExprType {
     Number,
     Bool,
@@ -56,7 +51,6 @@ enum class ExprType {
     Unknown
 };
 
-// === Base Class ===
 struct Expr {
     virtual ~Expr() = default;
     virtual void dump(std::ostream& os, int indent = 0) const = 0;
@@ -67,10 +61,8 @@ inline std::string indent_str(int indent) {
     return std::string(indent, ' ');
 }
 
-// === EXPRESSIONS ===
-
 struct NumberExpr : public Expr {
-    int num;
+    int64_t num;
     bool is_negitive_or_zero = false;
     NumberExpr(int v) : num(v) {
         if (num <= 0)
@@ -307,7 +299,6 @@ struct NewExpr : public Expr {
     }
 };
 //STATEMENTS
-
 struct stmt
 {
 public:

@@ -1,1 +1,9 @@
-paddu();
+let a = 'a';
+let b = "b";
+let c = 2.5;
+let d = 2;
+
+//let abc = a == 'a' && b == "a";
+let cd = c ^ d;
+
+let y = cd * 2;
