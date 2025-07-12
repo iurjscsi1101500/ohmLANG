@@ -3,7 +3,13 @@ let b = "b";
 let c = 2.5;
 let d = 2;
 
-//let abc = a == 'a' && b == "a";
+let abc = a == 'a' || b == "a";
 let cd = c ^ d;
 
-let y = cd * 2;
+if abc == true {
+	let sigma = 2;
+	sigma /= 2;
+	let f = sigma / 2;
+} else {
+	let sigma_ = 3;
+}

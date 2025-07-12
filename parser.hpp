@@ -828,6 +828,7 @@ void createTokenTypeLookups(void) {
     type_nud(Tokens::tok_big_para_open, parse_array_type);
 }
 void createTokenLookups(void) {
+    //done
     led(Tokens::tok_equal, assignment, parse_assignment);
     led(Tokens::tok_plus_equal, assignment, parse_assignment);
     led(Tokens::tok_minus_equal, assignment, parse_assignment);
@@ -837,7 +838,7 @@ void createTokenLookups(void) {
 
     led(Tokens::tok_and, logical, parse_binary_expr);
     led(Tokens::tok_or, logical, parse_binary_expr);
-    led(Tokens::tok_dot_dot, logical, parse_range_expr);
+    led(Tokens::tok_dot_dot, logical, parse_range_expr); //not done
 
     led(Tokens::tok_smaller_than, relational, parse_binary_expr);
     led(Tokens::tok_greater_than, relational, parse_binary_expr);
@@ -852,6 +853,7 @@ void createTokenLookups(void) {
     led(Tokens::tok_divide, multiplicative, parse_binary_expr);
     led(Tokens::tok_percent, multiplicative, parse_binary_expr);
     led(Tokens::tok_power, multiplicative, parse_binary_expr);
+    //not done
     led(Tokens::tok_arrow, member, parse_member_expr);
     led(Tokens::tok_big_para_open, member, parse_member_expr);
     led(Tokens::tok_open_bracket, call, parse_call_expr);
@@ -870,12 +872,12 @@ void createTokenLookups(void) {
     nud(Tokens::tok_not, unary, parse_prefix);
     nud(Tokens::tok_big_para_open, unary, parse_array_literal);
 
-    stmt(Tokens::tok_const, default_bp, parse_var);
-    stmt(Tokens::tok_let, default_bp, parse_var);
+    stmt(Tokens::tok_const, default_bp, parse_var); //done
+    stmt(Tokens::tok_let, default_bp, parse_var); //done
     stmt(Tokens::tok_class, default_bp, parse_class_dec_stmt);
     stmt(Tokens::tok_enum, default_bp, parse_enum_dec_stmt);
     stmt(Tokens::tok_import, default_bp, parse_import);
-    stmt(Tokens::tok_if, default_bp, parse_if_else);
+    stmt(Tokens::tok_if, default_bp, parse_if_else); //done
     stmt(Tokens::tok_while_loop, default_bp, parse_while);
     stmt(Tokens::tok_for_loop, default_bp, parse_for);
     stmt(Tokens::tok_def, default_bp, parse_function);
